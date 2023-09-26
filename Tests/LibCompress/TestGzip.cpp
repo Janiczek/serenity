@@ -10,6 +10,16 @@
 #include <AK/Random.h>
 #include <LibCompress/Gzip.h>
 
+using namespace Test::Randomized;
+
+RANDOMIZED_TEST_CASE(roundtrip)
+{
+    GEN(buffer, Gen::vector(0,2048,[](){return (u8)Gen::unsigned_int(255);}));
+    auto const compressed = MUST(Compress::GzipCompressor::compress_all(buffer));
+    auto const decompressed = MUST(Compress::GzipDecompressor::decompress_all(compressed));
+    EXPECT_EQ(buffer, decompressed);
+}
+
 TEST_CASE(gzip_decompress_simple)
 {
     Array<u8, 33> const compressed {
