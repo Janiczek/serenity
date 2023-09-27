@@ -10,6 +10,16 @@
 #include <AK/DeprecatedString.h>
 #include <string.h>
 
+using namespace Test::Randomized;
+
+RANDOMIZED_TEST_CASE(roundtrip)
+{
+    GEN(buffer, Gen::vector(0,2048,[](){return (u8)Gen::unsigned_int(255);}));
+    auto const encoded = MUST(encode_base64(buffer));
+    auto const decoded = MUST(decode_base64(encoded));
+    EXPECT_EQ(buffer, decoded);
+}
+
 TEST_CASE(test_decode)
 {
     auto decode_equal = [&](StringView input, StringView expected) {
