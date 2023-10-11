@@ -9,6 +9,8 @@
 #include <AK/BuiltinWrappers.h>
 #include <AK/Types.h>
 
+using namespace Test::Randomized;
+
 TEST_CASE(wrapped_popcount)
 {
     EXPECT_EQ(popcount(NumericLimits<u8>::max()), 8);
@@ -64,4 +66,31 @@ TEST_CASE(wrapped_count_required_bits)
     EXPECT_EQ(count_required_bits(0b1000u), 4ul);
     EXPECT_EQ(count_required_bits(0b1111u), 4ul);
     EXPECT_EQ(count_required_bits(NumericLimits<u32>::max()), sizeof(u32) * 8);
+}
+
+RANDOMIZED_TEST_CASE(count_leading_zeroes)
+{
+    //    count_leading_zeroes(0b000...0001000...000)
+    // == count_leading_zeroes(0b000...0001___...___) (where _ is 0 or 1)
+    GEN(e, Gen::unsigned_int(0,63));
+    auto power_of_two = 1ULL << e; // 2^e
+
+    GEN(below, Gen::unsigned_int(0, power_of_two - 1));
+    auto n = power_of_two + below; // 2^e + random bits below the first 1
+
+    EXPECT_EQ(count_leading_zeroes(n), count_leading_zeroes(power_of_two));
+}
+
+RANDOMIZED_TEST_CASE(count_required_bits)
+{
+    // count_required_bits(n) == log2(n) + 1
+    GEN(n, Gen::unsigned_int());
+    size_t expected = max(1,AK::log2(static_cast<double>(n)) + 1); // max due to edge case for n=0
+    EXPECT_EQ(count_required_bits(n), expected);
+}
+
+RANDOMIZED_TEST_CASE(bit_scan_forward_count_trailing_zeroes)
+{
+    GEN(n, Gen::unsigned_int(1,1<<31)); // behaviour for 0 differs
+    EXPECT_EQ(bit_scan_forward(n), count_trailing_zeroes(n) + 1);
 }
