@@ -7,6 +7,9 @@
 #include <LibTest/TestCase.h>
 
 #include <AK/CircularBuffer.h>
+#include <AK/Variant.h>
+
+using namespace Test::Randomized;
 
 namespace {
 
@@ -44,6 +47,15 @@ TEST_CASE(simple_write_read)
 
     safe_write(buffer, 42);
     safe_read(buffer, 42);
+}
+
+RANDOMIZED_TEST_CASE(simple_write_read_randomized)
+{
+    auto buffer = create_circular_buffer(1);
+    GEN(n, static_cast<u8>(Gen::unsigned_int()));
+
+    safe_write(buffer, n);
+    safe_read(buffer, n);
 }
 
 TEST_CASE(writing_above_limits)
@@ -84,6 +96,41 @@ TEST_CASE(usage_with_wrapping_around)
     safe_read(buffer, 6);
 
     EXPECT_EQ(buffer.used_space(), 0ul);
+}
+
+TEST_CASE(wraparound)
+{
+    // We'll do 5 writes+reads of 4 items:
+    //
+    // [_,_,_,_,_] ->
+    // [0,0,0,0,_] -> [_,_,_,_,_] ->
+    // [1,1,1,_,1] -> [_,_,_,_,_] ->
+    // [2,2,_,2,2] -> [_,_,_,_,_] ->
+    // [3,_,3,3,3] -> [_,_,_,_,_] ->
+    // [_,4,4,4,4] -> [_,_,_,_,_]
+
+    size_t size = 5;
+    auto buffer = MUST(CircularBuffer::create_empty(size));
+    auto batch_size = size - 1;
+
+    for (size_t i = 0; i < size; ++i)
+    {
+        Vector<u8> write_vec;
+        for (size_t j = 0; j < batch_size; ++j)
+            write_vec.append(i);
+
+        size_t written_bytes = buffer.write(write_vec);
+        EXPECT_EQ(written_bytes, batch_size);
+
+        Vector<u8> read_vec;
+        for (size_t j = 0; j < batch_size; ++j)
+            read_vec.append(0);
+
+        Bytes read_bytes = buffer.read(read_vec);
+        EXPECT_EQ(read_bytes.size(), batch_size);
+        for (size_t j = 0; j < write_vec.size(); ++j)
+            EXPECT_EQ(read_bytes[j], write_vec[j]);
+    }
 }
 
 TEST_CASE(full_read_aligned)
@@ -439,5 +486,170 @@ BENCHMARK_CASE(looping_copy_from_seekback)
     {
         auto copied_bytes = TRY_OR_FAIL(circular_buffer.copy_from_seekback(1, 15 * MiB));
         EXPECT_EQ(copied_bytes, 15 * MiB);
+    }
+}
+
+// Model test
+//
+// We'll model the circular buffer with a Vector<u8> where reads always happen at
+// index 0 and writes happen at the end, alongside a max size integer.
+// It's less efficient but easier to get right.
+
+struct Model {
+    Vector<u8> data;
+    size_t max_size;
+};
+
+struct OpRead {
+    size_t size;
+};
+struct OpWrite {
+    Vector<u8> data;
+};
+struct OpDiscard {
+    size_t upto;
+};
+struct OpEmptySpace {};
+struct OpUsedSpace {};
+struct OpCapacity {};
+using Op = AK::Variant<OpRead, OpWrite, OpDiscard, OpEmptySpace, OpUsedSpace, OpCapacity>;
+
+template<>
+struct AK::Formatter<Op> : Formatter<StringView> {
+    ErrorOr<void> format(FormatBuilder& builder, Op op)
+    {
+        auto name = TRY(op.visit(
+            [](OpRead read) { return String::formatted("Read({})", read.size); },
+            [](OpWrite write) { return String::formatted("Write(0x{})", write.data); },
+            [](OpDiscard discard) { return String::formatted("Discard({})", discard.upto); },
+            [](OpEmptySpace) { return String::formatted("EmptySpace"); },
+            [](OpUsedSpace) { return String::formatted("UsedSpace"); },
+            [](OpCapacity) { return String::formatted("Capacity"); }
+            ));
+        return Formatter<StringView>::format(builder, name);
+    }
+};
+
+Bytes model_read(Bytes out_buffer, Model& model)
+{
+    auto read_size = AK::min(out_buffer.size(), model.data.size());
+    for (size_t i = 0; i < read_size; i++)
+        out_buffer[i] = model.data[i];
+    model.data.remove(0, read_size);
+    return out_buffer.trim(read_size);
+}
+
+size_t model_write(ReadonlyBytes bytes, Model& model)
+{
+    auto write_size = AK::min(bytes.size(), model.max_size - model.data.size());
+    for (size_t i = 0; i < write_size; i++)
+        model.data.append(bytes[i]);
+    return write_size;
+}
+
+void model_discard(size_t upto, Model& model)
+{
+    model.data.remove(0, AK::min(upto, model.data.size()));
+}
+
+size_t model_empty_space(Model& model)
+{
+    return model.max_size - model.data.size();
+}
+
+size_t model_used_space(Model& model)
+{
+    return model.data.size();
+}
+
+size_t model_capacity(Model& model)
+{
+    return model.max_size;
+}
+
+RANDOMIZED_TEST_CASE(read_write)
+{
+    // Generate random sequences of operations:
+    // - read()
+    // - write()
+    // - discard() 
+    // - empty_space()
+    // - used_space()
+    // - capacity()
+    // Return values must agree with a model implementation.
+
+    GEN(size, Gen::unsigned_int(1, 32));
+    GEN(ops, Gen::vector([]() {
+        return Gen::one_of(
+            []() {
+                auto size = Gen::unsigned_int(48);
+                return Op { OpRead { size } };
+            },
+            []() {
+                auto data = Gen::vector([]() { return static_cast<u8>(Gen::unsigned_int(255)); });
+                return Op { OpWrite { data } };
+            },
+            []() {
+                auto upto = Gen::unsigned_int(48);
+                return Op { OpDiscard { upto } };
+            },
+            []() { return Op { OpEmptySpace { } }; },
+            []() { return Op { OpUsedSpace { } }; },
+            []() { return Op { OpCapacity { } }; }
+        )();
+    }));
+
+    auto circular_buffer = MUST(CircularBuffer::create_empty(size));
+    Model model { Vector<u8> {}, size };
+    model.data.ensure_capacity(size);
+
+    warnln("{}", ops);
+    for (auto op : ops) {
+        if (op.has<OpRead>()) {
+            auto op_read = op.get<OpRead>();
+
+            // do it in model
+            Vector<u8> model_vec {};
+            for (size_t i = 0; i < op_read.size; ++i)
+                model_vec.append(0);
+            Bytes model_bytes = model_read(model_vec, model);
+
+            // do it for real
+            Vector<u8> real_vec {};
+            for (size_t i = 0; i < op_read.size; ++i)
+                real_vec.append(0);
+            auto real_bytes = circular_buffer.read(real_vec);
+
+            // check results
+            EXPECT_EQ(real_bytes.size(), model_bytes.size());
+            for (size_t i = 0; i < model_bytes.size(); i++)
+                EXPECT_EQ(real_bytes[i], model_bytes[i]);
+        } else if (op.has<OpWrite>()) {
+            auto op_write = op.get<OpWrite>();
+
+            // do it in model
+            auto model_written = model_write(op_write.data.span(), model);
+
+            // do it for real
+            auto real_written = circular_buffer.write(op_write.data.span());
+
+            // check results
+            EXPECT_EQ(real_written, model_written);
+        } else if (op.has<OpDiscard>()) {
+            auto op_discard = op.get<OpDiscard>();
+
+            // do it in model
+            model_discard(op_discard.upto, model);
+
+            // do it for real
+            MUST(circular_buffer.discard(AK::min(op_discard.upto, circular_buffer.used_space())));
+        } else if (op.has<OpEmptySpace>()) {
+            EXPECT_EQ(model_empty_space(model), circular_buffer.empty_space());
+        } else if (op.has<OpUsedSpace>()) {
+            EXPECT_EQ(model_used_space(model), circular_buffer.used_space());
+        } else if (op.has<OpCapacity>()) {
+            EXPECT_EQ(model_capacity(model), circular_buffer.capacity());
+        } else
+            FAIL("Forgot a case!");
     }
 }
