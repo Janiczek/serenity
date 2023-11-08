@@ -603,7 +603,6 @@ RANDOMIZED_TEST_CASE(read_write)
     Model model { Vector<u8> {}, size };
     model.data.ensure_capacity(size);
 
-    warnln("{}", ops);
     for (auto op : ops) {
         if (op.has<OpRead>()) {
             auto op_read = op.get<OpRead>();
@@ -652,4 +651,50 @@ RANDOMIZED_TEST_CASE(read_write)
         } else
             FAIL("Forgot a case!");
     }
+}
+
+RANDOMIZED_TEST_CASE(read_with_seekback)
+{
+    // Setup:
+    // 1. create a buffer
+    // 2. write anything + read it back, to "move the needle" and allow the test to exercise the wraparound
+    // 3. write N bytes
+    // 4. read_with_seekback(distance = 0..N) and get the same N bytes back
+
+    // 1.
+    GEN(size, Gen::unsigned_int(2,128));
+    auto circular_buffer = MUST(CircularBuffer::create_empty(size));
+
+    // 2.
+    GEN(initial_write_size, Gen::unsigned_int(1,size-1));
+    GEN(initial_write_vec, Gen::vector(initial_write_size, [](){return (u8)Gen::unsigned_int(255);}));
+    auto initial_written = circular_buffer.write(initial_write_vec);
+    EXPECT_EQ(initial_written, initial_write_size);
+
+    GEN(initial_read_vec, Gen::vector(initial_write_size, [](){return (u8)0;});
+    auto initial_read = circular_buffer.read(initial_read_vec);
+
+    // 3.
+    GEN(main_write_size, Gen::unsigned_int(1,size-initial_write_size));
+    GEN(main_write_vec, Gen::vector(main_write_size, [](){return (u8)Gen::unsigned_int(255);}));
+    auto main_written = circular_buffer.write(main_write_vec);
+    EXPECT_EQ(main_writen, main_write_size);
+
+    // 4.
+    // TODO TODO TODO TODO
+
+    
+
+    // WRITE
+    Vector<u8> write_vec;
+    for (size_t j = 0; j < batch_size; ++j)
+        write_vec.append(i);
+    auto real_written = circular_buffer.write(write_vec);
+
+    // READ
+    Vector<u8> real_vec {};
+    for (size_t i = 0; i < op_read.size; ++i)
+        real_vec.append(0);
+    auto real_bytes = circular_buffer.read(real_vec);
+    
 }
