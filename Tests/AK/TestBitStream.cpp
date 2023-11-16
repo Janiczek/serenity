@@ -134,7 +134,7 @@ TEST_CASE(big_endian_bit_stream_input_output_match)
 
 RANDOMIZED_TEST_CASE(roundtrip_u8_little_endian)
 {
-    GEN(n, Gen::unsigned_int(NumericLimits<u8>::max()));
+    GEN(n, Gen::number_u64(NumericLimits<u8>::max()));
 
     auto memory_stream = make<AllocatingMemoryStream>();
     LittleEndianOutputBitStream sut_write { MaybeOwned<Stream>(*memory_stream) };
@@ -149,7 +149,7 @@ RANDOMIZED_TEST_CASE(roundtrip_u8_little_endian)
 
 RANDOMIZED_TEST_CASE(roundtrip_u16_little_endian)
 {
-    GEN(n, Gen::unsigned_int(NumericLimits<u16>::max()));
+    GEN(n, Gen::number_u64(NumericLimits<u16>::max()));
 
     auto memory_stream = make<AllocatingMemoryStream>();
     LittleEndianOutputBitStream sut_write { MaybeOwned<Stream>(*memory_stream) };
@@ -164,7 +164,7 @@ RANDOMIZED_TEST_CASE(roundtrip_u16_little_endian)
 
 RANDOMIZED_TEST_CASE(roundtrip_u32_little_endian)
 {
-    GEN(n, Gen::unsigned_int(NumericLimits<u32>::max()));
+    GEN(n, Gen::number_u64(NumericLimits<u32>::max()));
 
     auto memory_stream = make<AllocatingMemoryStream>();
     LittleEndianOutputBitStream sut_write { MaybeOwned<Stream>(*memory_stream) };
@@ -179,7 +179,7 @@ RANDOMIZED_TEST_CASE(roundtrip_u32_little_endian)
 
 RANDOMIZED_TEST_CASE(roundtrip_u8_big_endian)
 {
-    GEN(n, Gen::unsigned_int(NumericLimits<u8>::max()));
+    GEN(n, Gen::number_u64(NumericLimits<u8>::max()));
 
     auto memory_stream = make<AllocatingMemoryStream>();
     BigEndianOutputBitStream sut_write { MaybeOwned<Stream>(*memory_stream) };
@@ -193,7 +193,7 @@ RANDOMIZED_TEST_CASE(roundtrip_u8_big_endian)
 
 RANDOMIZED_TEST_CASE(roundtrip_u16_big_endian)
 {
-    GEN(n, Gen::unsigned_int(NumericLimits<u16>::max()));
+    GEN(n, Gen::number_u64(NumericLimits<u16>::max()));
 
     auto memory_stream = make<AllocatingMemoryStream>();
     BigEndianOutputBitStream sut_write { MaybeOwned<Stream>(*memory_stream) };
@@ -207,7 +207,7 @@ RANDOMIZED_TEST_CASE(roundtrip_u16_big_endian)
 
 RANDOMIZED_TEST_CASE(roundtrip_u32_big_endian)
 {
-    GEN(n, Gen::unsigned_int(NumericLimits<u32>::max()));
+    GEN(n, Gen::number_u64(NumericLimits<u32>::max()));
 
     auto memory_stream = make<AllocatingMemoryStream>();
     BigEndianOutputBitStream sut_write { MaybeOwned<Stream>(*memory_stream) };

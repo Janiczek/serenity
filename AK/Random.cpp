@@ -28,4 +28,18 @@ u32 get_random_uniform(u32 max_bounds)
     return random_value % max_bounds;
 }
 
+u64 get_random_uniform_64(u64 max_bounds)
+{
+    // Uses the same trick as `u32 get_random_uniform(u32)`.
+    // Needs to handle overflow edge cases more carefully though.
+    const u64 max_usable = max_bounds == UINT64_MAX
+        ? max_bounds
+        : UINT64_MAX - (UINT64_MAX - max_bounds + 1) % max_bounds;
+    auto random_value = get_random<u64>();
+    for (int i = 0; i < 20 && random_value > max_usable; ++i) {
+        random_value = get_random<u64>();
+    }
+    return random_value % max_bounds;
+}
+
 }

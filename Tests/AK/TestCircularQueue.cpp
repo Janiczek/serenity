@@ -66,3 +66,5 @@ TEST_CASE(should_not_call_value_type_constructor_when_created)
     CircularQueue<ConstructorCounter, 10> queue;
     EXPECT_EQ(0u, ConstructorCounter::s_num_constructor_calls);
 }
+
+// TODO model test on a vector

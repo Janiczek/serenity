@@ -52,7 +52,7 @@ TEST_CASE(simple_write_read)
 RANDOMIZED_TEST_CASE(simple_write_read_randomized)
 {
     auto buffer = create_circular_buffer(1);
-    GEN(n, static_cast<u8>(Gen::unsigned_int()));
+    GEN(n, static_cast<u8>(Gen::number_u64()));
 
     safe_write(buffer, n);
     safe_read(buffer, n);
@@ -578,19 +578,19 @@ RANDOMIZED_TEST_CASE(read_write)
     // - capacity()
     // Return values must agree with a model implementation.
 
-    GEN(size, Gen::unsigned_int(1, 32));
+    GEN(size, Gen::number_u64(1, 32));
     GEN(ops, Gen::vector([]() {
         return Gen::one_of(
             []() {
-                auto size = Gen::unsigned_int(48);
+                auto size = Gen::number_u64(48);
                 return Op { OpRead { size } };
             },
             []() {
-                auto data = Gen::vector([]() { return static_cast<u8>(Gen::unsigned_int(255)); });
+                auto data = Gen::vector([]() { return static_cast<u8>(Gen::number_u64(255)); });
                 return Op { OpWrite { data } };
             },
             []() {
-                auto upto = Gen::unsigned_int(48);
+                auto upto = Gen::number_u64(48);
                 return Op { OpDiscard { upto } };
             },
             []() { return Op { OpEmptySpace { } }; },
@@ -653,48 +653,48 @@ RANDOMIZED_TEST_CASE(read_write)
     }
 }
 
-RANDOMIZED_TEST_CASE(read_with_seekback)
-{
-    // Setup:
-    // 1. create a buffer
-    // 2. write anything + read it back, to "move the needle" and allow the test to exercise the wraparound
-    // 3. write N bytes
-    // 4. read_with_seekback(distance = 0..N) and get the same N bytes back
-
-    // 1.
-    GEN(size, Gen::unsigned_int(2,128));
-    auto circular_buffer = MUST(CircularBuffer::create_empty(size));
-
-    // 2.
-    GEN(initial_write_size, Gen::unsigned_int(1,size-1));
-    GEN(initial_write_vec, Gen::vector(initial_write_size, [](){return (u8)Gen::unsigned_int(255);}));
-    auto initial_written = circular_buffer.write(initial_write_vec);
-    EXPECT_EQ(initial_written, initial_write_size);
-
-    GEN(initial_read_vec, Gen::vector(initial_write_size, [](){return (u8)0;});
-    auto initial_read = circular_buffer.read(initial_read_vec);
-
-    // 3.
-    GEN(main_write_size, Gen::unsigned_int(1,size-initial_write_size));
-    GEN(main_write_vec, Gen::vector(main_write_size, [](){return (u8)Gen::unsigned_int(255);}));
-    auto main_written = circular_buffer.write(main_write_vec);
-    EXPECT_EQ(main_writen, main_write_size);
-
-    // 4.
-    // TODO TODO TODO TODO
-
-    
-
-    // WRITE
-    Vector<u8> write_vec;
-    for (size_t j = 0; j < batch_size; ++j)
-        write_vec.append(i);
-    auto real_written = circular_buffer.write(write_vec);
-
-    // READ
-    Vector<u8> real_vec {};
-    for (size_t i = 0; i < op_read.size; ++i)
-        real_vec.append(0);
-    auto real_bytes = circular_buffer.read(real_vec);
-    
-}
+//RANDOMIZED_TEST_CASE(read_with_seekback)
+//{
+//    // Setup:
+//    // 1. create a buffer
+//    // 2. write anything + read it back, to "move the needle" and allow the test to exercise the wraparound
+//    // 3. write N bytes
+//    // 4. read_with_seekback(distance = 0..N) and get the same N bytes back
+//
+//    // 1.
+//    GEN(size, Gen::number_u64(2,128));
+//    auto circular_buffer = MUST(CircularBuffer::create_empty(size));
+//
+//    // 2.
+//    GEN(initial_write_size, Gen::number_u64(1,size-1));
+//    GEN(initial_write_vec, Gen::vector(initial_write_size, [](){return (u8)Gen::number_u64(255);}));
+//    auto initial_written = circular_buffer.write(initial_write_vec);
+//    EXPECT_EQ(initial_written, initial_write_size);
+//
+//    GEN(initial_read_vec, Gen::vector(initial_write_size, [](){return (u8)0;});
+//    auto initial_read = circular_buffer.read(initial_read_vec);
+//
+//    // 3.
+//    GEN(main_write_size, Gen::number_u64(1,size-initial_write_size));
+//    GEN(main_write_vec, Gen::vector(main_write_size, [](){return (u8)Gen::number_u64(255);}));
+//    auto main_written = circular_buffer.write(main_write_vec);
+//    EXPECT_EQ(main_writen, main_write_size);
+//
+//    // 4.
+//    // TODO TODO TODO TODO
+//
+//    
+//
+//    // WRITE
+//    Vector<u8> write_vec;
+//    for (size_t j = 0; j < batch_size; ++j)
+//        write_vec.append(i);
+//    auto real_written = circular_buffer.write(write_vec);
+//
+//    // READ
+//    Vector<u8> real_vec {};
+//    for (size_t i = 0; i < op_read.size; ++i)
+//        real_vec.append(0);
+//    auto real_bytes = circular_buffer.read(real_vec);
+//    
+//}

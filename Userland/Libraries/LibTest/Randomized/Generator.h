@@ -19,18 +19,18 @@ namespace Test {
 namespace Randomized {
 
 // Returns a random double value in range 0..1.
+// This is not a generator. It is meant to be used inside RandomnessSource::draw_value().
+// Based on: https://dotat.at/@/2023-06-23-random-double.html
 inline double get_random_probability()
 {
-    static constexpr u32 max_u32 = NumericLimits<u32>::max();
-    u32 random_u32 = AK::get_random_uniform(max_u32);
-    return static_cast<double>(random_u32) / static_cast<double>(max_u32);
+    return static_cast<double>(AK::get_random<u64>() >> 11) * 0x1.0p-53;
 }
 
 // Generators take random bits from the RandomnessSource and return a value
 // back.
 //
 // Example:
-// - Gen::u32(5,10) --> 9, 7, 5, 10, 8, ...
+// - Gen::number_u64(5,10) --> 9, 7, 5, 10, 8, ...
 namespace Gen {
 
 // An unsigned integer generator.
@@ -38,41 +38,41 @@ namespace Gen {
 // The minimum value will always be 0.
 // The maximum value is given by user in the argument.
 //
-// Gen::unsigned_int(10) -> value 5, RandomRun [5]
-//                       -> value 8, RandomRun [8]
-//                       etc.
+// Gen::number_u64(10) -> value 5, RandomRun [5]
+//                     -> value 8, RandomRun [8]
+//                     etc.
 //
 // Shrinks towards 0.
-inline u32 unsigned_int(u32 max)
+inline u64 number_u64(u64 max)
 {
     if (max == 0)
         return 0;
 
-    u32 random = Test::randomness_source().draw_value(max, [&]() {
-        // `clamp` to guard against integer overflow and calling get_random_uniform(0).
-        u32 exclusive_bound = AK::clamp(max + 1, max, NumericLimits<u32>::max());
-        return AK::get_random_uniform(exclusive_bound);
+    u64 random = Test::randomness_source().draw_value(max, [&]() {
+        // `clamp` to guard against integer overflow
+        u64 exclusive_bound = AK::clamp(max + 1, max, NumericLimits<u64>::max());
+        return AK::get_random_uniform_64(exclusive_bound);
     });
     return random;
 }
 
 // An unsigned integer generator in a particular range.
 //
-// Gen::unsigned_int(3,10) -> value 3,  RandomRun [0]
-//                         -> value 8,  RandomRun [5]
-//                         -> value 10, RandomRun [7]
-//                         etc.
+// Gen::number_u64(3,10) -> value 3,  RandomRun [0]
+//                       -> value 8,  RandomRun [5]
+//                       -> value 10, RandomRun [7]
+//                       etc.
 //
 // In case `min == max`, the RandomRun footprint will be smaller: no randomness
 // is needed.
 //
-// Gen::unsigned_int(3,3) -> value 3, RandomRun [] (always)
+// Gen::number_u64(3,3) -> value 3, RandomRun [] (always)
 //
 // Shrinks towards the minimum.
-inline u32 unsigned_int(u32 min, u32 max)
+inline u64 number_u64(u64 min, u64 max)
 {
     VERIFY(max >= min);
-    return unsigned_int(max - min) + min;
+    return number_u64(max - min) + min;
 }
 
 // Randomly (uniformly) selects a value out of the given arguments.
@@ -89,7 +89,7 @@ CommonType<Ts...> one_of(Ts... choices)
     Vector<CommonType<Ts...>> choices_vec { choices... };
 
     constexpr size_t count = sizeof...(choices);
-    size_t i = unsigned_int(count - 1);
+    size_t i = number_u64(count - 1);
     return choices_vec[i];
 }
 
@@ -118,16 +118,16 @@ CommonType<Ts...> frequency(Choice<Ts>... choices)
 {
     Vector<Choice<CommonType<Ts...>>> choices_vec { choices... };
 
-    u32 sum = 0;
+    u64 sum = 0;
     for (auto const& choice : choices_vec) {
         VERIFY(choice.weight > 0);
-        sum += static_cast<u32>(choice.weight);
+        sum += static_cast<u64>(choice.weight);
     }
 
-    u32 target = unsigned_int(sum);
+    u64 target = number_u64(sum);
     size_t i = 0;
     for (auto const& choice : choices_vec) {
-        u32 weight = static_cast<u32>(choice.weight);
+        u64 weight = static_cast<u64>(choice.weight);
         if (weight >= target) {
             return choice.value;
         }
@@ -137,46 +137,47 @@ CommonType<Ts...> frequency(Choice<Ts>... choices)
     return choices_vec[i - 1].value;
 }
 
-// An unsigned integer generator in the full u32 range.
+// An unsigned integer generator in the full u64 range.
 //
-// 8/17 (47%) of the time it will bias towards 8bit numbers,
-// 4/17 (23%) towards 4bit numbers,
-// 2/17 (12%) towards 16bit numbers,
-// 1/17 (6%) towards 32bit numbers,
-// 2/17 (12%) towards edge cases like 0 and NumericLimits::max() of various unsigned int types.
+// Prefers 8bit numbers, then 4bit, 16bit, 32bit and 64bit ones.
+// Around 11% of the time it tries edge cases like 0 and various NumericLimits::max().
 //
-// Gen::unsigned_int() -> value 3,     RandomRun [0,3]
-//                     -> value 8,     RandomRun [1,8]
-//                     -> value 100,   RandomRun [2,100]
-//                     -> value 5,     RandomRun [3,5]
-//                     -> value 255,   RandomRun [4,1]
-//                     -> value 65535, RandomRun [4,2]
-//                     etc.
+// Gen::number_u64() -> value 3,     RandomRun [0,3]
+//                   -> value 8,     RandomRun [1,8]
+//                   -> value 100,   RandomRun [2,100]
+//                   -> value 5,     RandomRun [3,5]
+//                   -> value 255,   RandomRun [4,1]
+//                   -> value 65535, RandomRun [4,2]
+//                   etc.
 //
 // Shrinks towards 0.
-inline u32 unsigned_int()
+inline u64 number_u64()
 {
-    u32 bits = frequency(
+    u64 bits = frequency(
         // weight, bits
         Choice { 4, 4 },
         Choice { 8, 8 },
         Choice { 2, 16 },
         Choice { 1, 32 },
+        Choice { 1, 64 },
         Choice { 2, 0 });
 
     // The special cases go last as they can be the most extreme (large) values.
 
     if (bits == 0) {
-        // Special cases, eg. max integers for u8, u16, u32.
+        // Special cases, eg. max integers for u8, u16, u32, u64.
         return one_of(
             0U,
             NumericLimits<u8>::max(),
             NumericLimits<u16>::max(),
-            NumericLimits<u32>::max());
+            NumericLimits<u32>::max(),
+            NumericLimits<u64>::max());
     }
 
-    u32 max = ((u64)1 << bits) - 1;
-    return unsigned_int(max);
+    u64 max = bits == 64
+        ? NumericLimits<u64>::max()
+        : ((u64)1 << bits) - 1;
+    return number_u64(max);
 }
 
 // A generator returning `true` with the given `probability` (0..1).
@@ -197,7 +198,7 @@ inline bool weighted_boolean(double probability)
     if (probability >= 1)
         return true;
 
-    u32 random_int = Test::randomness_source().draw_value(1, [&]() {
+    u64 random_int = Test::randomness_source().draw_value(1, [&]() {
         double drawn_probability = get_random_probability();
         return drawn_probability <= probability ? 1 : 0;
     });
@@ -219,7 +220,7 @@ inline bool boolean()
 
 // A vector generator of a random length between the given limits.
 //
-// Gen::vector(2,3,[]() { return Gen::unsigned_int(5); })
+// Gen::vector(2,3,[]() { return Gen::number_u64(5); })
 //   -> value [1,5],      RandomRun [1,1,1,5,0]
 //   -> value [1,5,0],    RandomRun [1,1,1,5,1,0,0]
 //   etc.
@@ -227,7 +228,7 @@ inline bool boolean()
 // In case `min == max`, the RandomRun footprint will be smaller, as there will
 // be no randomness involved in figuring out the length:
 //
-// Gen::vector(3,3,[]() { return Gen::unsigned_int(5); })
+// Gen::vector(3,3,[]() { return Gen::number_u64(5); })
 //   -> value [1,3], RandomRun [1,3]
 //   -> value [5,2], RandomRun [5,2]
 //   etc.
@@ -295,7 +296,7 @@ inline Vector<InvokeResult<Fn>> vector(size_t min, size_t max, Fn item_gen)
 
 // A vector generator of a given length.
 //
-// Gen::vector_of_length(3,[]() { return Gen::unsigned_int(5); })
+// Gen::vector_of_length(3,[]() { return Gen::number_u64(5); })
 //   -> value [1,5,0],    RandomRun [1,1,1,5,1,0,0]
 //   -> value [2,9,3],    RandomRun [1,2,1,9,1,3,0]
 //   etc.
@@ -312,7 +313,7 @@ inline Vector<InvokeResult<Fn>> vector(size_t length, Fn item_gen)
 // If you need a different length, use vector(max,item_gen) or
 // vector(min,max,item_gen).
 //
-// Gen::vector([]() { return Gen::unsigned_int(5); })
+// Gen::vector([]() { return Gen::number_u64(5); })
 //   -> value [],         RandomRun [0]
 //   -> value [1],        RandomRun [1,1,0]
 //   -> value [1,5],      RandomRun [1,1,1,5,0]
@@ -325,6 +326,134 @@ template<typename Fn>
 inline Vector<InvokeResult<Fn>> vector(Fn item_gen)
 {
     return vector(0, 32, item_gen);
+}
+
+// A double generator in the [0,1) range.
+//
+// RandomRun footprint: a single number.
+//
+// Shrinks towards 0.
+//
+// Based on: https://dotat.at/@/2023-06-23-random-double.html
+inline double percentage()
+{
+    return static_cast<double>(number_u64() >> 11) * 0x1.0p-53;
+}
+
+// An internal double generator. This one won't make any attempt to shrink nicely.
+// Test writers should use number_f64(double min, double max) instead.
+inline double number_f64_scaled(double min, double max)
+{
+    VERIFY(max >= min);
+
+    if (min == max)
+        return min;
+
+    return percentage() * (max - min) + min;
+}
+
+// A double generator.
+//
+// The minimum and maximum value are given by the user.
+//
+// Prefers positive numbers, then negative numbers, then edge cases.
+inline double number_f64(double min, double max)
+{
+    VERIFY(max >= min);
+
+    if (min == max)
+        return min;
+
+    // Both are non-negative.
+    if (min >= 0)
+        return frequency(
+            Choice {1, [=](){ return min; }},
+            Choice {1, [=](){ return max; }},
+            Choice {4, [=](){ return number_f64_scaled(min, max); }}
+        )();
+    
+    // Both are negative.
+    if (max <= 0)
+        return frequency(
+            Choice {1, [=](){ return min; }},
+            Choice {1, [=](){ return max; }},
+            Choice {4, [=](){ return -number_f64_scaled(-max, -min); }}
+        )();
+
+    // Goes through zero somewhere. Divide it into negative and positive ranges,
+    // both of which will simplify towards zero. We prefer positive values.
+    return frequency(
+        Choice {1, [=](){ return 0; } },
+        Choice {2, [=](){ return min; } },
+        Choice {2, [=](){ return max; } },
+        Choice {4, [=](){ return number_f64_scaled(0, max); } },
+        Choice {4, [=](){ return -number_f64_scaled(0, -min); } }
+    )();
+}
+
+// TODO
+inline double number_f64()
+{
+    // FIXME: this could be much nicer to the user, at the expense of code complexity
+    // We could follow Hypothesis' lead and remap integers 0..MAXINT to _simple_
+    // floats rather than small floats. Meaning, we would like to prefer integers
+    // over floats with decimal digits, positive numbers over negative numbers etc.
+    // As a result, users would get failures with floats like 0, 1, or 0.5 instead of
+    // ones like 1.175494e-38.
+    // Check the doc comment in Hypothesis: https://github.com/HypothesisWorks/hypothesis/blob/master/hypothesis-python/src/hypothesis/internal/conjecture/floats.py
+
+    return number_f64(NumericLimits<double>::lowest(), NumericLimits<double>::max());
+}
+
+// A double generator.
+//
+// The minimum value will always be NumericLimits<double>::lowest().
+// The maximum value is given by user in the argument.
+//
+// Prefers positive numbers, then negative numbers, then edge cases.
+//
+// Shrinks towards 0.
+inline double number_f64(double max)
+{
+    // We are splitting this generator into two intervals, so that we can provide good shrinking in at least _some_ cases.
+    if (max >= 0)
+        return frequency(
+            // This doesn't shrink nicely.
+            Choice {4, [=](){return number_f64(0, max); } },
+
+            // This one has potential to (after implementing some FIXMEs in number_f64()) shrink to nice numbers.
+            Choice {4, [](){return -abs(number_f64()); } },
+
+            // Edge cases
+            Choice {2, [=](){return max;}},
+            Choice {2, [](){return NumericLimits<double>::lowest();}},
+            Choice {1, [](){return 0;}}
+        )();
+    
+    return frequency(
+        Choice {8, [=](){return max - abs(number_f64());}},
+        Choice {2, [=](){return max;}},
+        Choice {2, [](){return NumericLimits<double>::lowest();}}
+    )();
+}
+
+// TODO
+inline u32 number_u32()
+{
+    // TODO
+    return 0;
+}
+// TODO
+inline u32 number_u32(u32/* max*/)
+{
+    // TODO
+    return 0;
+}
+// TODO
+inline u32 number_u32(u32 min, u32/* max*/)
+{
+    // TODO
+    return min;
 }
 
 } // namespace Gen

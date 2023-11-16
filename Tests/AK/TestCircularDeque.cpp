@@ -61,3 +61,5 @@ TEST_CASE(deque_end)
     EXPECT_EQ(ints.dequeue_end(), 0);
     EXPECT(ints.is_empty());
 }
+
+// TODO model test that CircularDeque behaves like CircularQueue in all aspects

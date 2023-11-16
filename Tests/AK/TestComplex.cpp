@@ -8,6 +8,8 @@
 
 #include <AK/Complex.h>
 
+using namespace Test::Randomized;
+
 TEST_CASE(Complex)
 {
     auto a = Complex<float> { 1.f, 1.f };
@@ -42,3 +44,56 @@ TEST_CASE(Complex)
     EXPECT_APPROXIMATE(cexp(Complex<double>(0., 1.) * M_PI).real(), -1.);
 #endif
 }
+
+TEST_CASE(constructor_0)
+{
+    EXPECT_EQ(Complex<int>().real(), 0);
+    EXPECT_EQ(Complex<int>().imag(), 0);
+}
+
+RANDOMIZED_TEST_CASE(constructor_1)
+{
+    GEN(r, Gen::number_u64());
+    auto c = Complex<unsigned int>(r);
+    EXPECT_EQ(c.real(), r);
+    EXPECT_EQ(c.imag(), 0L);
+}
+
+RANDOMIZED_TEST_CASE(constructor_2)
+{
+    GEN(r, Gen::number_u64());
+    GEN(i, Gen::number_u64());
+    auto c = Complex<unsigned int>(r,i);
+    EXPECT_EQ(c.real(), r);
+    EXPECT_EQ(c.imag(), i);
+}
+
+Complex<double> gen_complex()
+{
+    auto r = Gen::number_f64();
+    auto i = Gen::number_f64();
+    return Complex<double>(r,i);
+}
+
+RANDOMIZED_TEST_CASE(magnitude_squared)
+{
+    GEN(c, gen_complex());
+    auto magnitude_squared = c.magnitude_squared();
+    auto magnitude = c.magnitude();
+    auto magnitude_squared_2 = magnitude * magnitude;
+    EXPECT_EQ(magnitude_squared, magnitude_squared_2);
+}
+
+// TODO: test from_polar(m,p).magnitude() == m
+// TODO: test from_polar(m,p).phase() == p
+// TODO: test (Complex(r1,i)+r2).imag() == i
+// TODO: test (Complex(r1,i)-r2).imag() == i
+// TODO: test Complex(r1,i1) += Complex(r2,i2) == Complex(r1,i1) + Complex(r2,i2)
+// TODO: test +c == c
+// TODO: test -(-c) == c
+// TODO: test r+c == c+r
+// TODO: test r*c == c*r
+// TODO: test r+c == C(r)+c
+// TODO: test r-c == C(r)-c
+// TODO: test r*c == C(r)*c
+// TODO: test r/c == C(r)/c
