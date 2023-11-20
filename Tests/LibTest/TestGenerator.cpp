@@ -160,6 +160,40 @@ RANDOMIZED_TEST_CASE(boolean_false)
     EXPECT(b == false);
 }
 
+TEST_CASE(one_of_int)
+{
+    auto x = Gen::one_of(1, 2);
+    warnln("{}", x);
+}
+
+TEST_CASE(one_of_fn)
+{
+    auto x = Gen::one_of(
+        [](){return 1;},
+        [](){return 2;}
+    )();
+    warnln("{}", x);
+}
+
+TEST_CASE(one_of_fn_arg)
+{
+    auto x = Gen::one_of(
+        [](double a){return a;},
+        [](double a){return a+1;}
+    )(10);
+    warnln("{}", x);
+}
+
+TEST_CASE(one_of_fn_capture)
+{
+    double a = 0;
+    auto x = Gen::one_of(
+        [=](){return a;},
+        [=](){return a+1;}
+    )();
+    warnln("{}", x);
+}
+
 RANDOMIZED_TEST_CASE(frequency_int)
 {
     GEN(x, Gen::frequency(Gen::Choice { 5, 'x' }, Gen::Choice { 1, 'o' }));
